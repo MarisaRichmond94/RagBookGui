@@ -3,7 +3,9 @@ dist/
 .DS_Store
 .env
 .env.*
+!backend/.env.example
+backend/.env
 .venv/
 __pycache__/
 *.pyc
-
+*.code-workspace
