@@ -1,9 +1,11 @@
 import { FormEvent, useState } from "react";
 
 type SourceItem = {
+  rank: number;
   source: string;
   metadata: Record<string, unknown>;
   distance: number | null;
+  text: string;
 };
 
 type AskResponse = {
@@ -17,14 +19,51 @@ export default function App() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceItem[]>([]);
+  const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const selectedSource = sources[selectedSourceIndex] ?? null;
+
+  function metadataValue(value: unknown): string {
+    if (typeof value === "string") {
+      return value;
+    }
+    return JSON.stringify(value);
+  }
+
+  function metadataField(metadata: Record<string, unknown>, name: string): unknown {
+    const exact = metadata[name];
+    if (exact !== undefined) {
+      return exact;
+    }
+
+    const match = Object.entries(metadata).find(([key]) => key.toLowerCase() === name.toLowerCase());
+    return match?.[1];
+  }
+
+  function sourceLabel(item: SourceItem): string {
+    const metadata = item.metadata ?? {};
+    const book = String(
+      metadata.book ??
+        metadata.title ??
+        metadata.book_title ??
+        metadata.source ??
+        item.source ??
+        `Document ${item.rank}`
+    );
+    const chapterValue =
+      metadata.chapter ?? metadata.chapter_number ?? metadata.chapter_num ?? metadata.section;
+    const chapter = chapterValue === undefined || chapterValue === null ? "?" : String(chapterValue);
+    return `${book} - Chapter ${chapter}`;
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setAnswer("");
     setSources([]);
+    setSelectedSourceIndex(0);
 
     const trimmed = question.trim();
     if (!trimmed) {
@@ -48,6 +87,7 @@ export default function App() {
       const data = (await response.json()) as AskResponse;
       setAnswer(data.answer);
       setSources(data.sources);
+      setSelectedSourceIndex(0);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Request failed.");
     } finally {
@@ -85,16 +125,54 @@ export default function App() {
       {sources.length > 0 ? (
         <section className="panel">
           <h2>Sources</h2>
-          <ul className="sources">
+          <div className="source-tabs" role="tablist" aria-label="Source list">
             {sources.map((item, idx) => (
-              <li key={`${item.source}-${idx}`}>
-                <strong>{item.source}</strong>
-                {item.distance !== null ? (
-                  <span className="distance">distance: {item.distance.toFixed(4)}</span>
-                ) : null}
-              </li>
+              <button
+                key={`${item.rank}-${idx}`}
+                type="button"
+                className={`source-tab ${selectedSourceIndex === idx ? "active" : ""}`}
+                onClick={() => setSelectedSourceIndex(idx)}
+              >
+                {sourceLabel(item)}
+              </button>
             ))}
-          </ul>
+          </div>
+
+          {selectedSource ? (
+            <div className="source-detail">
+              <p className="source-meta-line">
+                <strong>Selected:</strong> {sourceLabel(selectedSource)}
+                {selectedSource.distance !== null ? (
+                  <span className="distance">
+                    distance: {selectedSource.distance.toFixed(4)}
+                  </span>
+                ) : null}
+              </p>
+
+              <div className="metadata-block">
+                <h3>Metadata</h3>
+                <dl className="metadata-list">
+                  <div className="metadata-item">
+                    <dt>date</dt>
+                    <dd>
+                      {metadataValue(metadataField(selectedSource.metadata, "date") ?? "N/A")}
+                    </dd>
+                  </div>
+                  <div className="metadata-item">
+                    <dt>pov</dt>
+                    <dd>
+                      {metadataValue(metadataField(selectedSource.metadata, "pov") ?? "N/A")}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="text-block">
+                <h3>Sourced Text</h3>
+                <p>{selectedSource.text}</p>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </main>

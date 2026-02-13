@@ -200,7 +200,6 @@ def ask_rag(question: str) -> dict[str, Any]:
 
     context_blocks: list[str] = []
     sources: list[dict[str, Any]] = []
-    seen: set[str] = set()
 
     for idx, doc in enumerate(documents, start=1):
         metadata = metadatas[idx - 1] if idx - 1 < len(metadatas) else None
@@ -208,15 +207,15 @@ def ask_rag(question: str) -> dict[str, Any]:
         source = _source_name(metadata, idx)
         context_blocks.append(f"[{idx}] {source}\n{doc}")
 
-        if source not in seen:
-            seen.add(source)
-            sources.append(
-                {
-                    "source": source,
-                    "metadata": metadata or {},
-                    "distance": distance,
-                }
-            )
+        sources.append(
+            {
+                "rank": idx,
+                "source": source,
+                "metadata": metadata or {},
+                "distance": distance,
+                "text": doc or "",
+            }
+        )
 
     context = "\n\n".join(context_blocks)
     completion = client.chat.completions.create(
