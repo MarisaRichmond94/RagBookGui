@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
 type SourceItem = {
   rank: number;
@@ -13,6 +13,11 @@ type AskResponse = {
   sources: SourceItem[];
 };
 
+type FilterOptionsResponse = {
+  books: string[];
+  povs: string[];
+};
+
 const API_BASE_URL = "http://localhost:8000";
 
 export default function App() {
@@ -20,6 +25,10 @@ export default function App() {
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
+  const [allowedBooks, setAllowedBooks] = useState<string[]>([]);
+  const [allowedPovs, setAllowedPovs] = useState<string[]>([]);
+  const [selectedBooks, setSelectedBooks] = useState<string[]>([]);
+  const [selectedPov, setSelectedPov] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -58,6 +67,30 @@ export default function App() {
     return `${book} - Chapter ${chapter}`;
   }
 
+  useEffect(() => {
+    async function loadFilterOptions() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/filter-options`);
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as FilterOptionsResponse;
+        setAllowedBooks(data.books ?? []);
+        setAllowedPovs(data.povs ?? []);
+      } catch {
+        setAllowedBooks([]);
+        setAllowedPovs([]);
+      }
+    }
+
+    void loadFilterOptions();
+  }, []);
+
+  function onBookSelectChange(event: ChangeEvent<HTMLSelectElement>) {
+    const options = Array.from(event.target.selectedOptions).map((option) => option.value);
+    setSelectedBooks(options);
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -73,10 +106,18 @@ export default function App() {
 
     setIsLoading(true);
     try {
+      const payload: { question: string; books?: string[]; pov?: string } = { question: trimmed };
+      if (selectedBooks.length > 0) {
+        payload.books = selectedBooks;
+      }
+      if (selectedPov) {
+        payload.pov = selectedPov;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmed })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -108,6 +149,43 @@ export default function App() {
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Ask a question about your ragbooks collection..."
         />
+
+        <div className="filters-grid">
+          <div>
+            <label htmlFor="books">Books (multi-select)</label>
+            <select
+              id="books"
+              multiple
+              value={selectedBooks}
+              onChange={onBookSelectChange}
+              className="filter-select"
+            >
+              {allowedBooks.map((book) => (
+                <option key={book} value={book}>
+                  {book}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="pov">POV</label>
+            <select
+              id="pov"
+              value={selectedPov}
+              onChange={(event) => setSelectedPov(event.target.value)}
+              className="filter-select"
+            >
+              <option value="">All</option>
+              {allowedPovs.map((pov) => (
+                <option key={pov} value={pov}>
+                  {pov}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <button type="submit" disabled={isLoading}>
           {isLoading ? "Asking..." : "Ask"}
         </button>

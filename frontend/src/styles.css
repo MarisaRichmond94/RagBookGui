@@ -37,6 +37,26 @@ textarea {
   resize: vertical;
 }
 
+.filters-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.filter-select {
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: #fff;
+}
+
+#books.filter-select {
+  min-height: 110px;
+}
+
 button {
   width: fit-content;
   border: 0;
@@ -143,6 +163,10 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+
   .metadata-item {
     grid-template-columns: 1fr;
   }

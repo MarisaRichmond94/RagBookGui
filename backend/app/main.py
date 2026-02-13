@@ -1,4 +1,7 @@
+import os
 from typing import Any
+from typing import List
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -32,11 +35,31 @@ def health_check() -> dict[str, str]:
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
+    books: Optional[List[str]] = None
+    pov: Optional[str] = None
 
 
 class AskResponse(BaseModel):
     answer: str
     sources: list[dict[str, Any]]
+
+
+class FilterOptionsResponse(BaseModel):
+    books: list[str]
+    povs: list[str]
+
+
+def _csv_env(name: str) -> list[str]:
+    raw = os.getenv(name, "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+@app.get("/api/filter-options", response_model=FilterOptionsResponse)
+def filter_options() -> FilterOptionsResponse:
+    return FilterOptionsResponse(
+        books=_csv_env("ALLOWED_BOOKS"),
+        povs=_csv_env("ALLOWED_POVS"),
+    )
 
 
 @app.post("/api/ask", response_model=AskResponse)
