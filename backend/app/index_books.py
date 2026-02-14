@@ -23,6 +23,18 @@ OVERLAP_PARAGRAPHS = 1
 load_dotenv(dotenv_path=BACKEND_ENV_PATH)
 
 
+def _first_non_empty(meta: dict[str, Any], keys: list[str]) -> Any:
+    for key in keys:
+        value = meta.get(key)
+        if isinstance(value, str):
+            if value.strip():
+                return value.strip()
+            continue
+        if value is not None:
+            return value
+    return None
+
+
 def sanitize_metadata(meta: dict[str, Any]) -> dict[str, str | int | float | bool]:
     cleaned: dict[str, str | int | float | bool] = {}
     for key, value in meta.items():
@@ -127,10 +139,12 @@ def main() -> None:
             "book": book_name,
             "chapter_file": chapter_txt.name,
             "chapter_dir": str(chapter_txt.parent),
-            "chapter": chapter_meta.get("chapter"),
-            "chapter_heading": chapter_meta.get("chapter_heading"),
-            "pov": chapter_meta.get("pov"),
-            "date": chapter_meta.get("date"),
+            "chapter": _first_non_empty(chapter_meta, ["chapter", "chapter_number", "chapter_num"]),
+            "chapter_heading": _first_non_empty(
+                chapter_meta, ["chapter_heading", "chapter_title", "heading", "title"]
+            ),
+            "pov": _first_non_empty(chapter_meta, ["pov", "point_of_view"]),
+            "date": _first_non_empty(chapter_meta, ["date", "chapter_date", "day", "timeline_date"]),
         }
 
         chunks = chunk_text_by_paragraphs(text, max_chars=MAX_CHARS, overlap_paragraphs=OVERLAP_PARAGRAPHS)

@@ -284,7 +284,7 @@ def _build_citation(metadata: dict[str, Any], source: str, rank: int) -> str:
     book = str(metadata.get("book") or source or f"Document {rank}")
     chapter = str(metadata.get("chapter") or metadata.get("chapter_file") or "?")
     pov = str(metadata.get("pov") or "Unknown")
-    date = str(metadata.get("date") or "Unknown")
+    date = str(metadata.get("date") or metadata.get("chapter_date") or "Unknown")
     chapter_file = str(metadata.get("chapter_file") or "Unknown")
     chunk_index = str(metadata.get("chunk_index") if metadata.get("chunk_index") is not None else rank - 1)
     return f"{book} | Ch {chapter} | POV {pov} | Date {date} | File {chapter_file} | Chunk {chunk_index}"
