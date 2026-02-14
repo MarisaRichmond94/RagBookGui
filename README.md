@@ -148,6 +148,10 @@ Backend behavior for `POST /api/ask`:
 - Returns `{answer, sources}`
 
 Optional environment variables:
+- `ALLOWED_BOOKS` (comma-separated UI/API filter options)
+- `ALLOWED_POVS` (comma-separated UI/API filter options)
+- `ALLOWED_CHARACTERS` (comma-separated timeline character options override)
+- `ALLOWED_LOCATIONS` (comma-separated timeline location options override)
 - `CHROMA_PATH` (default: `~/RagBooks/ChromaDB`)
 - `CHROMA_COLLECTION` (default: `ragbooks`)
 - `CHROMA_SUMMARY_COLLECTION` (default: `ragbooks_chapter_summaries`)
@@ -202,6 +206,11 @@ Response:
 ### `GET /api/timeline/options`
 
 Returns distinct option lists for searchable timeline filters.
+The backend resolves options in this order:
+1. `~/RagBooks/Artifacts/timeline.db`
+2. cached `~/RagBooks/Artifacts/timeline_options.json`
+3. live extraction from Chroma (`ragbooks`) as fallback
+4. if `ALLOWED_CHARACTERS` / `ALLOWED_LOCATIONS` are set, they override generated character/location options
 
 Supported query params:
 - `books` (comma-separated book names for scope)
@@ -217,10 +226,20 @@ Response:
 }
 ```
 
+Build or refresh the options cache from Chroma manually:
+
+```bash
+pnpm run backend:timeline-options
+```
+
+Character canonicalization rule:
+- If a single-token first name appears (for example `Noah`) and exactly one full name with the same first token exists (for example `Noah Gatlin`), options keep the full name.
+
 ## Timeline Artifacts
 
 Timeline extraction runs during `pnpm run backend:reindex` and stores one structured record per chapter in:
 - `~/RagBooks/Artifacts/timeline.db`
+- `~/RagBooks/Artifacts/timeline_options.json` (generated from Chroma when using `backend:timeline-options` or fallback build)
 
 Schema fields:
 - `book`

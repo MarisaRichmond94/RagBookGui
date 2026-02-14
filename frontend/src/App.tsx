@@ -159,6 +159,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (page !== "timeline") {
+      return;
+    }
+
     async function loadTimelineOptions() {
       setTimelineOptionsLoading(true);
       try {
@@ -187,7 +191,7 @@ export default function App() {
     }
 
     void loadTimelineOptions();
-  }, [selectedBooks]);
+  }, [page, selectedBooks]);
 
   function onBookSelectChange(event: SelectChangeEvent<string[]>) {
     const value = event.target.value;

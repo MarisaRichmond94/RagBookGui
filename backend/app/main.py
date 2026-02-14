@@ -118,6 +118,12 @@ def timeline_options(
     scoped_books = [item.strip() for item in books.split(",") if item.strip()] if books else None
     safe_limit = max(1, min(limit, 1000))
     options = get_timeline_options(books=scoped_books, limit=safe_limit)
+    explicit_characters = _csv_env("ALLOWED_CHARACTERS")
+    explicit_locations = _csv_env("ALLOWED_LOCATIONS")
+    if explicit_characters:
+        options["characters"] = explicit_characters[:safe_limit]
+    if explicit_locations:
+        options["locations"] = explicit_locations[:safe_limit]
     return TimelineOptionsResponse(**options)
 
 

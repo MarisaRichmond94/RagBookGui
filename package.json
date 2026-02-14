@@ -9,7 +9,8 @@
     "frontend:build": "pnpm --filter frontend build",
     "frontend:preview": "pnpm --filter frontend preview",
     "backend:dev": "./.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir backend",
-    "backend:reindex": "./.venv/bin/python backend/app/index_books.py"
+    "backend:reindex": "PYTHONPATH=backend ./.venv/bin/python backend/app/index_books.py",
+    "backend:timeline-options": "PYTHONPATH=backend ./.venv/bin/python backend/app/build_timeline_options.py"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
