@@ -4,23 +4,30 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import Paper from "@mui/material/Paper";
 import Select, { SelectChangeEvent } from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 type SourceItem = {
+  id: string;
   rank: number;
   source: string;
   metadata: Record<string, unknown>;
   distance: number | null;
   text: string;
+  citation: string;
+  snippet: string;
+  score: number;
+  rationale: string;
 };
 
 type AskResponse = {
@@ -44,6 +51,7 @@ export default function App() {
   const [allowedPovs, setAllowedPovs] = useState<string[]>([]);
   const [selectedBooks, setSelectedBooks] = useState<string[]>([]);
   const [selectedPov, setSelectedPov] = useState("");
+  const [rerankSources, setRerankSources] = useState(true);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -121,7 +129,12 @@ export default function App() {
 
     setIsLoading(true);
     try {
-      const payload: { question: string; books?: string[]; pov?: string } = { question: trimmed };
+      const payload: {
+        question: string;
+        books?: string[];
+        pov?: string;
+        rerank_sources: boolean;
+      } = { question: trimmed, rerank_sources: rerankSources };
       if (selectedBooks.length > 0) {
         payload.books = selectedBooks;
       }
@@ -226,6 +239,16 @@ export default function App() {
                   </FormControl>
                 </Stack>
 
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={rerankSources}
+                      onChange={(_, checked) => setRerankSources(checked)}
+                    />
+                  }
+                  label="Rerank sources"
+                />
+
                 <Button type="submit" variant="contained" size="large" disabled={isLoading}>
                   {isLoading ? "Asking..." : "Ask"}
                 </Button>
@@ -266,12 +289,20 @@ export default function App() {
                 {selectedSource ? (
                   <Stack spacing={1.5}>
                     <Typography variant="subtitle2" color="text.secondary">
+                      Score: {selectedSource.score.toFixed(2)}
                       {selectedSource.distance !== null
-                        ? ` (distance: ${selectedSource.distance.toFixed(4)})`
+                        ? `  |  Distance: ${selectedSource.distance.toFixed(4)}`
                         : ""}
                     </Typography>
 
                     <Paper variant="outlined" sx={{ p: 1.5 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Citation
+                      </Typography>
+                      <Typography variant="body2" sx={{ mb: 1.5 }}>
+                        {selectedSource.citation}
+                      </Typography>
+
                       <Typography variant="subtitle2" gutterBottom>
                         Metadata
                       </Typography>
@@ -288,6 +319,16 @@ export default function App() {
                     </Paper>
 
                     <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 200, overflowY: "auto" }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Snippet
+                      </Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6, mb: 1 }}>
+                        {selectedSource.snippet}
+                      </Typography>
+
+                      <Typography variant="subtitle2" gutterBottom>
+                        Sourced Text
+                      </Typography>
                       <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
                         {selectedSource.text}
                       </Typography>

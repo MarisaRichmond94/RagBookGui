@@ -37,6 +37,7 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1)
     books: Optional[List[str]] = None
     pov: Optional[str] = None
+    rerank_sources: bool = True
 
 
 class AskResponse(BaseModel):
@@ -69,7 +70,12 @@ def ask_question(payload: AskRequest) -> AskResponse:
         raise HTTPException(status_code=400, detail="question cannot be empty")
 
     try:
-        result = ask_rag(question, books=payload.books, pov=payload.pov)
+        result = ask_rag(
+            question,
+            books=payload.books,
+            pov=payload.pov,
+            rerank_sources=payload.rerank_sources,
+        )
     except MissingOpenAIAPIKeyError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except RagRuntimeError as exc:

@@ -96,7 +96,10 @@ Request:
 
 ```json
 {
-  "question": "Your question here"
+  "question": "Your question here",
+  "books": ["Optional", "Book Filter"],
+  "pov": "Optional POV Filter",
+  "rerank_sources": true
 }
 ```
 
@@ -108,6 +111,9 @@ Response:
   "sources": [
     {
       "source": "source name/path/url",
+      "citation": "Book | Ch # | POV | Date | File | Chunk",
+      "snippet": "first ~600 chars",
+      "score": 8.7,
       "metadata": {},
       "distance": 0.1234
     }
@@ -121,6 +127,8 @@ Backend behavior for `POST /api/ask`:
 - Embeds question with OpenAI
 - Queries top 10 docs + metadatas
 - Builds context
+- Retrieves a larger candidate set from Chroma
+- Reranks candidates (LLM by default, embedding fallback)
 - Calls OpenAI chat model
 - Returns `{answer, sources}`
 
@@ -129,6 +137,10 @@ Optional environment variables:
 - `CHROMA_COLLECTION` (default: `ragbooks`)
 - `OPENAI_EMBEDDING_MODEL` (default: `text-embedding-3-small`)
 - `OPENAI_CHAT_MODEL` (default: `gpt-4o-mini`)
+- `OPENAI_RERANK_MODEL` (default: `gpt-4o-mini`)
+- `RAG_CANDIDATE_COUNT` (default: `60`)
+- `RAG_TOP_K` (default: `12`)
+- `RAG_RERANK_MODE` (default: `llm`, options: `llm`, `embedding`)
 
 If `OPENAI_API_KEY` is missing, `/api/ask` fails gracefully with a clear error.
 
