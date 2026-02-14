@@ -181,13 +181,13 @@ export default function App() {
 
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                   <FormControl fullWidth>
-                    <InputLabel id="books-select-label">Books (multi-select)</InputLabel>
+                    <InputLabel id="books-select-label">Book(s)</InputLabel>
                     <Select<string[]>
                       labelId="books-select-label"
                       multiple
                       value={selectedBooks}
                       onChange={onBookSelectChange}
-                      input={<OutlinedInput label="Books (multi-select)" />}
+                      input={<OutlinedInput label="Book(s)" />}
                       renderValue={(selected) => (
                         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                           {selected.map((book) => (

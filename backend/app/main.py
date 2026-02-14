@@ -69,7 +69,7 @@ def ask_question(payload: AskRequest) -> AskResponse:
         raise HTTPException(status_code=400, detail="question cannot be empty")
 
     try:
-        result = ask_rag(question)
+        result = ask_rag(question, books=payload.books, pov=payload.pov)
     except MissingOpenAIAPIKeyError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except RagRuntimeError as exc:

@@ -62,6 +62,18 @@ This starts:
 - Backend at `http://localhost:8000`
 - Frontend at `http://localhost:5173`
 
+### 5) Rebuild index (paragraph-aware chunking)
+
+```bash
+pnpm run backend:reindex
+```
+
+This reindexes `~/RagBooks/Books` into `~/RagBooks/ChromaDB` using:
+- paragraph-aware chunks split on blank lines
+- max chunk size around 2800 chars
+- 1-paragraph overlap between adjacent chunks
+- collection recreation (`ragbooks`) before indexing so old and new chunks are not mixed
+
 You can still run each one separately with:
 - `pnpm run backend:dev`
 - `pnpm run frontend:dev`
