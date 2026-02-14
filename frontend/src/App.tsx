@@ -33,11 +33,22 @@ type SourceItem = {
 type AskResponse = {
   answer: string;
   sources: SourceItem[];
+  stage1_chapters: Stage1Chapter[];
 };
 
 type FilterOptionsResponse = {
   books: string[];
   povs: string[];
+};
+
+type Stage1Chapter = {
+  book?: string;
+  chapter?: string | number;
+  chapter_file?: string;
+  pov?: string;
+  date?: string;
+  score?: number;
+  summary_snippet?: string;
 };
 
 const API_BASE_URL = "http://localhost:8000";
@@ -52,6 +63,8 @@ export default function App() {
   const [selectedBooks, setSelectedBooks] = useState<string[]>([]);
   const [selectedPov, setSelectedPov] = useState("");
   const [rerankSources, setRerankSources] = useState(true);
+  const [summariesFirst, setSummariesFirst] = useState(false);
+  const [stage1Chapters, setStage1Chapters] = useState<Stage1Chapter[]>([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -119,6 +132,7 @@ export default function App() {
     setError("");
     setAnswer("");
     setSources([]);
+    setStage1Chapters([]);
     setSelectedSourceIndex(0);
 
     const trimmed = question.trim();
@@ -134,7 +148,8 @@ export default function App() {
         books?: string[];
         pov?: string;
         rerank_sources: boolean;
-      } = { question: trimmed, rerank_sources: rerankSources };
+        summaries_first: boolean;
+      } = { question: trimmed, rerank_sources: rerankSources, summaries_first: summariesFirst };
       if (selectedBooks.length > 0) {
         payload.books = selectedBooks;
       }
@@ -156,6 +171,7 @@ export default function App() {
       const data = (await response.json()) as AskResponse;
       setAnswer(data.answer);
       setSources(data.sources);
+      setStage1Chapters(data.stage1_chapters ?? []);
       setSelectedSourceIndex(0);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Request failed.");
@@ -248,6 +264,15 @@ export default function App() {
                   }
                   label="Rerank sources"
                 />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={summariesFirst}
+                      onChange={(_, checked) => setSummariesFirst(checked)}
+                    />
+                  }
+                  label="Summaries-first"
+                />
 
                 <Button type="submit" variant="contained" size="large" disabled={isLoading}>
                   {isLoading ? "Asking..." : "Ask"}
@@ -265,6 +290,28 @@ export default function App() {
                 <Typography variant="body1" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.65 }}>
                   {answer}
                 </Typography>
+              </Paper>
+            ) : null}
+
+            {stage1Chapters.length > 0 ? (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Stage 1 Selected Chapters
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {stage1Chapters.map((chapter, idx) => {
+                    const book = chapter.book ?? "Unknown Book";
+                    const ch = chapter.chapter ?? chapter.chapter_file ?? "?";
+                    const pov = chapter.pov ?? "Unknown POV";
+                    return (
+                      <Chip
+                        key={`${book}-${String(ch)}-${idx}`}
+                        label={`${book} - Ch ${String(ch)} - ${pov}`}
+                        variant="outlined"
+                      />
+                    );
+                  })}
+                </Stack>
               </Paper>
             ) : null}
 

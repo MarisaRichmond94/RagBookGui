@@ -16,7 +16,9 @@ CHROMA_DIR = PROJECT_ROOT / "ChromaDB"
 BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "ragbooks")
+SUMMARY_COLLECTION_NAME = os.getenv("CHROMA_SUMMARY_COLLECTION", "ragbooks_chapter_summaries")
 EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+SUMMARY_MODEL = os.getenv("OPENAI_SUMMARY_MODEL", "gpt-4o-mini")
 MAX_CHARS = 2800
 OVERLAP_PARAGRAPHS = 1
 
@@ -99,6 +101,29 @@ def load_meta_for_chapter(chapter_txt: Path) -> dict[str, Any]:
     return json.loads(meta_path.read_text(encoding="utf-8"))
 
 
+def generate_chapter_summary(openai_client: OpenAI, chapter_text: str) -> str:
+    prompt_text = chapter_text[:12000]
+    response = openai_client.chat.completions.create(
+        model=SUMMARY_MODEL,
+        temperature=0.1,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Create a concise, structured chapter summary in 8 bullets or fewer. "
+                    "Cover key characters present, major events, important reveals, and timeline markers."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Chapter text:\n{prompt_text}",
+            },
+        ],
+    )
+    summary = (response.choices[0].message.content or "").strip()
+    return summary
+
+
 def main() -> None:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -109,11 +134,15 @@ def main() -> None:
 
     chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 
-    # Recreate collection each run so old and new chunking never mix.
+    # Recreate collections each run so old and new indexing artifacts never mix.
     existing_names = {collection.name for collection in chroma_client.list_collections()}
     if COLLECTION_NAME in existing_names:
         chroma_client.delete_collection(COLLECTION_NAME)
+    if SUMMARY_COLLECTION_NAME in existing_names:
+        chroma_client.delete_collection(SUMMARY_COLLECTION_NAME)
+
     collection = chroma_client.create_collection(COLLECTION_NAME)
+    summary_collection = chroma_client.create_collection(SUMMARY_COLLECTION_NAME)
 
     chapter_files = sorted(BOOKS_DIR.glob("*/*.txt"))
     if not chapter_files:
@@ -121,6 +150,7 @@ def main() -> None:
 
     openai_client = OpenAI(api_key=api_key)
     total_chunks = 0
+    total_summaries = 0
     indexed_chapters = 0
 
     for chapter_txt in chapter_files:
@@ -146,12 +176,26 @@ def main() -> None:
             "pov": _first_non_empty(chapter_meta, ["pov", "point_of_view"]),
             "date": _first_non_empty(chapter_meta, ["date", "chapter_date", "day", "timeline_date"]),
         }
+        clean_base_meta = sanitize_metadata(base_meta)
+
+        chapter_summary = generate_chapter_summary(openai_client, text)
+        summary_embedding = openai_client.embeddings.create(
+            model=EMBEDDING_MODEL, input=chapter_summary
+        ).data[0].embedding
+        summary_doc_id = f"{book_name}::{chapter_txt.name}::summary"
+        summary_collection.add(
+            ids=[summary_doc_id],
+            documents=[chapter_summary],
+            embeddings=[summary_embedding],
+            metadatas=[clean_base_meta],
+        )
+        total_summaries += 1
 
         chunks = chunk_text_by_paragraphs(text, max_chars=MAX_CHARS, overlap_paragraphs=OVERLAP_PARAGRAPHS)
         for idx, chunk in enumerate(chunks):
             embedding = openai_client.embeddings.create(model=EMBEDDING_MODEL, input=chunk).data[0].embedding
 
-            metadata = sanitize_metadata({**base_meta, "chunk_index": idx})
+            metadata = sanitize_metadata({**clean_base_meta, "chunk_index": idx})
             doc_id = f"{book_name}::{chapter_txt.name}::{idx}"
 
             collection.add(
@@ -163,9 +207,11 @@ def main() -> None:
             total_chunks += 1
 
     print(f"Indexed chapters: {indexed_chapters}")
+    print(f"Chapter summaries: {total_summaries}")
     print(f"Indexed chunks:   {total_chunks}")
     print(f"Chroma path:      {CHROMA_DIR}")
-    print(f"Collection:       {COLLECTION_NAME}")
+    print(f"Chunk collection: {COLLECTION_NAME}")
+    print(f"Summary collection: {SUMMARY_COLLECTION_NAME}")
     print("Rebuild complete.")
 
 

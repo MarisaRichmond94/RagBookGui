@@ -13,11 +13,13 @@ from dotenv import load_dotenv
 
 DEFAULT_CHROMA_PATH = Path.home() / "RagBooks" / "ChromaDB"
 DEFAULT_COLLECTION_NAME = "ragbooks"
+DEFAULT_SUMMARY_COLLECTION_NAME = "ragbooks_chapter_summaries"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_CHAT_MODEL = "gpt-4o-mini"
 DEFAULT_RERANK_MODEL = "gpt-4o-mini"
 DEFAULT_CANDIDATE_COUNT = 60
 DEFAULT_TOP_K = 12
+DEFAULT_STAGE1_CHAPTER_COUNT = 10
 DEFAULT_RERANK_MODE = "llm"
 BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 CHROMA_DEFAULT_COLLECTION_CONFIG_JSON = (
@@ -66,6 +68,32 @@ def _normalize_pov(pov: Optional[str]) -> Optional[str]:
     return normalized or None
 
 
+def is_global_question(question: str) -> bool:
+    q = question.lower()
+    markers = [
+        "primary character",
+        "secondary character",
+        "main character",
+        "themes",
+        "theme",
+        "character arc",
+        "character arcs",
+        "arc",
+        "overall",
+        "across the book",
+        "across books",
+        "throughout",
+        "big picture",
+        "overarching",
+        "motifs",
+    ]
+    return any(marker in q for marker in markers)
+
+
+def should_use_summaries_first(question: str, summaries_first: bool) -> bool:
+    return summaries_first or is_global_question(question)
+
+
 def _metadata_matches_filters(metadata: dict[str, Any] | None, books: list[str], pov: Optional[str]) -> bool:
     data = metadata or {}
     if books:
@@ -79,12 +107,18 @@ def _metadata_matches_filters(metadata: dict[str, Any] | None, books: list[str],
     return True
 
 
-def _build_where_filter(books: list[str], pov: Optional[str]) -> dict[str, Any] | None:
+def _build_where_filter(
+    books: list[str],
+    pov: Optional[str],
+    chapter_files: Optional[list[str]] = None,
+) -> dict[str, Any] | None:
     clauses: list[dict[str, Any]] = []
     if books:
         clauses.append({"book": {"$in": books}})
     if pov:
         clauses.append({"pov": pov})
+    if chapter_files:
+        clauses.append({"chapter_file": {"$in": chapter_files}})
 
     if not clauses:
         return None
@@ -152,10 +186,11 @@ def _query_with_filters(
     query_vector: list[float],
     books: list[str],
     pov: Optional[str],
+    chapter_files: Optional[list[str]],
     n_results: int,
 ) -> dict[str, Any]:
     include = ["documents", "metadatas", "distances"]
-    where_filter = _build_where_filter(books, pov)
+    where_filter = _build_where_filter(books, pov, chapter_files=chapter_files)
 
     try:
         if where_filter:
@@ -175,9 +210,7 @@ def _query_with_filters(
         if books and len(books) > 1:
             per_book_results: list[dict[str, Any]] = []
             for book in books:
-                per_book_where: dict[str, Any] = {"book": book}
-                if pov:
-                    per_book_where = {"$and": [per_book_where, {"pov": pov}]}
+                per_book_where = _build_where_filter([book], pov, chapter_files=chapter_files) or {"book": book}
                 per_book_results.append(
                     collection.query(
                         query_embeddings=[query_vector],
@@ -187,6 +220,21 @@ def _query_with_filters(
                     )
                 )
             return _merge_query_results(per_book_results, n_results)
+        if chapter_files and len(chapter_files) > 1:
+            per_chapter_results: list[dict[str, Any]] = []
+            for chapter_file in chapter_files:
+                per_chapter_where = _build_where_filter(books, pov, chapter_files=[chapter_file]) or {
+                    "chapter_file": chapter_file
+                }
+                per_chapter_results.append(
+                    collection.query(
+                        query_embeddings=[query_vector],
+                        n_results=n_results,
+                        include=include,
+                        where=per_chapter_where,
+                    )
+                )
+            return _merge_query_results(per_chapter_results, n_results)
         raise
 
 
@@ -303,6 +351,29 @@ def _build_citation(metadata: dict[str, Any], source: str, rank: int) -> str:
     chapter_file = str(metadata.get("chapter_file") or "Unknown")
     chunk_index = str(metadata.get("chunk_index") if metadata.get("chunk_index") is not None else rank - 1)
     return f"{book} | Ch {chapter} | POV {pov} | Date {date} | File {chapter_file} | Chunk {chunk_index}"
+
+
+def _chapter_scope_key(metadata: dict[str, Any]) -> tuple[str, str]:
+    return (str(metadata.get("book") or ""), str(metadata.get("chapter_file") or ""))
+
+
+def _chapter_in_scope(metadata: dict[str, Any] | None, stage1_scope: set[tuple[str, str]] | None) -> bool:
+    if not stage1_scope:
+        return True
+    data = metadata or {}
+    return _chapter_scope_key(data) in stage1_scope
+
+
+def _format_stage1_chapter(metadata: dict[str, Any], score: float, summary: str) -> dict[str, Any]:
+    return {
+        "book": metadata.get("book"),
+        "chapter": metadata.get("chapter"),
+        "chapter_file": metadata.get("chapter_file"),
+        "pov": metadata.get("pov"),
+        "date": metadata.get("date"),
+        "score": round(score, 3),
+        "summary_snippet": summary[:300],
+    }
 
 
 def _try_parse_rerank_response(text: str) -> tuple[float, str]:
@@ -471,11 +542,15 @@ def ask_rag(
     books: Optional[list[str]] = None,
     pov: Optional[str] = None,
     rerank_sources: bool = True,
+    summaries_first: bool = False,
 ) -> dict[str, Any]:
     books = _normalize_books(books)
     pov = _normalize_pov(pov)
     candidate_count = _get_int_env("RAG_CANDIDATE_COUNT", DEFAULT_CANDIDATE_COUNT, minimum=10, maximum=120)
     top_k = _get_int_env("RAG_TOP_K", DEFAULT_TOP_K, minimum=3, maximum=30)
+    stage1_chapter_count = _get_int_env(
+        "RAG_STAGE1_CHAPTER_COUNT", DEFAULT_STAGE1_CHAPTER_COUNT, minimum=5, maximum=20
+    )
     rerank_mode = os.getenv("RAG_RERANK_MODE", DEFAULT_RERANK_MODE).strip().lower()
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -495,6 +570,7 @@ def ask_rag(
 
     chroma_path = Path(os.getenv("CHROMA_PATH", str(DEFAULT_CHROMA_PATH))).expanduser()
     collection_name = os.getenv("CHROMA_COLLECTION", DEFAULT_COLLECTION_NAME)
+    summary_collection_name = os.getenv("CHROMA_SUMMARY_COLLECTION", DEFAULT_SUMMARY_COLLECTION_NAME)
     embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
     chat_model = os.getenv("OPENAI_CHAT_MODEL", DEFAULT_CHAT_MODEL)
     rerank_model = os.getenv("OPENAI_RERANK_MODEL", DEFAULT_RERANK_MODEL)
@@ -522,9 +598,48 @@ def ask_rag(
                 f"Failed to load Chroma collection '{collection_name}' from '{chroma_path}': {exc}"
             ) from exc
 
+    summary_collection = None
+    use_stage1 = should_use_summaries_first(question, summaries_first)
+    if use_stage1:
+        try:
+            summary_collection = chroma.get_collection(name=summary_collection_name)
+        except Exception:
+            summary_collection = None
+
     client = OpenAI(api_key=api_key)
     embedding = client.embeddings.create(model=embedding_model, input=question)
     question_embedding = embedding.data[0].embedding
+
+    stage1_chapters: list[dict[str, Any]] = []
+    stage1_scope: set[tuple[str, str]] | None = None
+
+    if summary_collection:
+        try:
+            stage1_result = _query_with_filters(
+                collection=summary_collection,
+                query_vector=question_embedding,
+                books=books,
+                pov=pov,
+                chapter_files=None,
+                n_results=stage1_chapter_count,
+            )
+            summary_docs = (stage1_result.get("documents") or [[]])[0]
+            summary_meta = (stage1_result.get("metadatas") or [[]])[0]
+            summary_distances = (stage1_result.get("distances") or [[]])[0]
+            stage1_scope = set()
+            for i, doc in enumerate(summary_docs):
+                meta = summary_meta[i] if i < len(summary_meta) and summary_meta[i] else {}
+                if not _metadata_matches_filters(meta, books, pov):
+                    continue
+                stage1_scope.add(_chapter_scope_key(meta))
+                distance = summary_distances[i] if i < len(summary_distances) else None
+                score = 0.0 if distance is None else max(0.0, 10.0 - float(distance))
+                stage1_chapters.append(_format_stage1_chapter(meta, score, doc or ""))
+        except Exception:
+            stage1_scope = None
+            stage1_chapters = []
+
+    chapter_files_scope = sorted({chapter_file for _, chapter_file in (stage1_scope or set()) if chapter_file})
 
     try:
         result = _query_with_filters(
@@ -532,6 +647,7 @@ def ask_rag(
             query_vector=question_embedding,
             books=books,
             pov=pov,
+            chapter_files=chapter_files_scope or None,
             n_results=candidate_count,
         )
     except Exception as exc:
@@ -559,6 +675,8 @@ def ask_rag(
         metadata = metadatas[idx - 1] if idx - 1 < len(metadatas) else None
         if not _metadata_matches_filters(metadata, books, pov):
             continue
+        if not _chapter_in_scope(metadata, stage1_scope):
+            continue
 
         data = metadata or {}
         doc_id = ids[idx - 1] if idx - 1 < len(ids) else f"doc-{idx}"
@@ -584,6 +702,7 @@ def ask_rag(
         return {
             "answer": "I could not find relevant context for that question with the selected filters.",
             "sources": [],
+            "stage1_chapters": stage1_chapters,
         }
 
     if rerank_sources:
@@ -641,5 +760,4 @@ def ask_rag(
         }
         for i, item in enumerate(selected, start=1)
     ]
-    return {"answer": answer, "sources": sources}
-
+    return {"answer": answer, "sources": sources, "stage1_chapters": stage1_chapters}

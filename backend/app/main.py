@@ -38,11 +38,13 @@ class AskRequest(BaseModel):
     books: Optional[List[str]] = None
     pov: Optional[str] = None
     rerank_sources: bool = True
+    summaries_first: bool = False
 
 
 class AskResponse(BaseModel):
     answer: str
     sources: list[dict[str, Any]]
+    stage1_chapters: list[dict[str, Any]] = []
 
 
 class FilterOptionsResponse(BaseModel):
@@ -75,6 +77,7 @@ def ask_question(payload: AskRequest) -> AskResponse:
             books=payload.books,
             pov=payload.pov,
             rerank_sources=payload.rerank_sources,
+            summaries_first=payload.summaries_first,
         )
     except MissingOpenAIAPIKeyError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
