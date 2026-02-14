@@ -10,6 +10,10 @@ import chromadb
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from app.timeline import extract_timeline_fields
+from app.timeline import init_timeline_db
+from app.timeline import upsert_timeline_chapter
+
 PROJECT_ROOT = Path(os.getenv("RAGBOOKS_ROOT", str(Path.home() / "RagBooks"))).expanduser()
 BOOKS_DIR = PROJECT_ROOT / "Books"
 CHROMA_DIR = PROJECT_ROOT / "ChromaDB"
@@ -133,6 +137,7 @@ def main() -> None:
         raise SystemExit(f"Books folder not found: {BOOKS_DIR}")
 
     chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    init_timeline_db(reset=True)
 
     # Recreate collections each run so old and new indexing artifacts never mix.
     existing_names = {collection.name for collection in chroma_client.list_collections()}
@@ -190,6 +195,18 @@ def main() -> None:
             metadatas=[clean_base_meta],
         )
         total_summaries += 1
+
+        timeline = extract_timeline_fields(text, pov=clean_base_meta.get("pov"))  # type: ignore[arg-type]
+        upsert_timeline_chapter(
+            book=book_name,
+            chapter=clean_base_meta.get("chapter"),
+            chapter_file=chapter_txt.name,
+            pov=clean_base_meta.get("pov") if isinstance(clean_base_meta.get("pov"), str) else None,
+            date_raw=clean_base_meta.get("date") if isinstance(clean_base_meta.get("date"), str) else None,
+            key_events=timeline["key_events"],
+            locations=timeline["locations"],
+            characters_present=timeline["characters_present"],
+        )
 
         chunks = chunk_text_by_paragraphs(text, max_chars=MAX_CHARS, overlap_paragraphs=OVERLAP_PARAGRAPHS)
         for idx, chunk in enumerate(chunks):

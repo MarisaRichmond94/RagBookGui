@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from app.rag import MissingOpenAIAPIKeyError
 from app.rag import RagRuntimeError
 from app.rag import ask_rag
+from app.timeline import get_timeline_options
+from app.timeline import search_timeline
 
 app = FastAPI(title="RagBookGui API")
 
@@ -52,6 +54,28 @@ class FilterOptionsResponse(BaseModel):
     povs: list[str]
 
 
+class TimelineEntry(BaseModel):
+    book: str
+    chapter: Optional[str] = None
+    chapter_file: str
+    pov: Optional[str] = None
+    date_raw: Optional[str] = None
+    key_events: list[str]
+    locations: list[str]
+    characters_present: list[str]
+    chapter_ref: str
+
+
+class TimelineSearchResponse(BaseModel):
+    results: list[TimelineEntry]
+
+
+class TimelineOptionsResponse(BaseModel):
+    characters: list[str]
+    dates: list[str]
+    locations: list[str]
+
+
 def _csv_env(name: str) -> list[str]:
     raw = os.getenv(name, "")
     return [item.strip() for item in raw.split(",") if item.strip()]
@@ -63,6 +87,38 @@ def filter_options() -> FilterOptionsResponse:
         books=_csv_env("ALLOWED_BOOKS"),
         povs=_csv_env("ALLOWED_POVS"),
     )
+
+
+@app.get("/api/timeline/search", response_model=TimelineSearchResponse)
+def timeline_search(
+    character: Optional[str] = None,
+    date: Optional[str] = None,
+    location: Optional[str] = None,
+    books: Optional[str] = None,
+    limit: int = 100,
+) -> TimelineSearchResponse:
+    scoped_books = [item.strip() for item in books.split(",") if item.strip()] if books else None
+    safe_limit = max(1, min(limit, 500))
+
+    rows = search_timeline(
+        character=character,
+        date_substring=date,
+        location=location,
+        books=scoped_books,
+        limit=safe_limit,
+    )
+    return TimelineSearchResponse(results=[TimelineEntry(**row) for row in rows])
+
+
+@app.get("/api/timeline/options", response_model=TimelineOptionsResponse)
+def timeline_options(
+    books: Optional[str] = None,
+    limit: int = 500,
+) -> TimelineOptionsResponse:
+    scoped_books = [item.strip() for item in books.split(",") if item.strip()] if books else None
+    safe_limit = max(1, min(limit, 1000))
+    options = get_timeline_options(books=scoped_books, limit=safe_limit)
+    return TimelineOptionsResponse(**options)
 
 
 @app.post("/api/ask", response_model=AskResponse)

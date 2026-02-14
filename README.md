@@ -74,6 +74,7 @@ This reindexes `~/RagBooks/Books` into `~/RagBooks/ChromaDB` using:
 - 1-paragraph overlap between adjacent chunks
 - collection recreation (`ragbooks` and `ragbooks_chapter_summaries`) before indexing so old and new chunks are not mixed
 - one chapter-level summary per chapter (<= 8 bullets) for two-stage retrieval
+- timeline extraction artifacts written to `~/RagBooks/Artifacts/timeline.db`
 
 You can still run each one separately with:
 - `pnpm run backend:dev`
@@ -160,6 +161,82 @@ Optional environment variables:
 - `RAG_STAGE1_CHAPTER_COUNT` (default: `10`)
 
 If `OPENAI_API_KEY` is missing, `/api/ask` fails gracefully with a clear error.
+
+### `GET /api/timeline/search`
+
+Query timeline artifacts extracted during indexing.
+
+Supported query params:
+- `character` (substring match against `characters_present`)
+- `date` (substring match against `date_raw`)
+- `location` (substring match against `locations`)
+- `books` (comma-separated book names for scope)
+- `limit` (default `100`, max `500`)
+
+Example:
+
+```bash
+curl "http://localhost:8000/api/timeline/search?character=Jared&location=Boston&books=Faded"
+```
+
+Response:
+
+```json
+{
+  "results": [
+    {
+      "book": "Faded",
+      "chapter": "4",
+      "chapter_file": "04_4.txt",
+      "pov": "Jared Gatlin",
+      "date_raw": "Monday, November 9th",
+      "key_events": ["..."],
+      "locations": ["..."],
+      "characters_present": ["..."],
+      "chapter_ref": "Faded/04_4.txt"
+    }
+  ]
+}
+```
+
+### `GET /api/timeline/options`
+
+Returns distinct option lists for searchable timeline filters.
+
+Supported query params:
+- `books` (comma-separated book names for scope)
+- `limit` (default `500`, max `1000`)
+
+Response:
+
+```json
+{
+  "characters": ["Jared Gatlin", "..."],
+  "dates": ["Monday, November 9th", "..."],
+  "locations": ["Boston", "..."]
+}
+```
+
+## Timeline Artifacts
+
+Timeline extraction runs during `pnpm run backend:reindex` and stores one structured record per chapter in:
+- `~/RagBooks/Artifacts/timeline.db`
+
+Schema fields:
+- `book`
+- `chapter`
+- `pov`
+- `date_raw`
+- `key_events` (JSON array)
+- `locations` (JSON array)
+- `characters_present` (JSON array)
+- `chapter_ref`
+
+Regeneration behavior:
+- Timeline artifacts are rebuilt each reindex run (`reset=True`), so they stay aligned with current chapter files.
+
+Safety:
+- Artifacts are not committed; `.gitignore` includes `Artifacts/`.
 
 ## Troubleshooting
 

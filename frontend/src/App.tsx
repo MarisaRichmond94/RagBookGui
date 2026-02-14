@@ -1,5 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -41,6 +45,28 @@ type FilterOptionsResponse = {
   povs: string[];
 };
 
+type TimelineEntry = {
+  book: string;
+  chapter?: string;
+  chapter_file: string;
+  pov?: string;
+  date_raw?: string;
+  key_events: string[];
+  locations: string[];
+  characters_present: string[];
+  chapter_ref: string;
+};
+
+type TimelineSearchResponse = {
+  results: TimelineEntry[];
+};
+
+type TimelineOptionsResponse = {
+  characters: string[];
+  dates: string[];
+  locations: string[];
+};
+
 type Stage1Chapter = {
   book?: string;
   chapter?: string | number;
@@ -54,6 +80,7 @@ type Stage1Chapter = {
 const API_BASE_URL = "http://localhost:8000";
 
 export default function App() {
+  const [page, setPage] = useState<"qa" | "timeline">("qa");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceItem[]>([]);
@@ -65,6 +92,15 @@ export default function App() {
   const [rerankSources, setRerankSources] = useState(true);
   const [summariesFirst, setSummariesFirst] = useState(false);
   const [stage1Chapters, setStage1Chapters] = useState<Stage1Chapter[]>([]);
+  const [timelineCharacter, setTimelineCharacter] = useState("");
+  const [timelineDate, setTimelineDate] = useState("");
+  const [timelineLocation, setTimelineLocation] = useState("");
+  const [timelineResults, setTimelineResults] = useState<TimelineEntry[]>([]);
+  const [timelineCharacterOptions, setTimelineCharacterOptions] = useState<string[]>([]);
+  const [timelineDateOptions, setTimelineDateOptions] = useState<string[]>([]);
+  const [timelineLocationOptions, setTimelineLocationOptions] = useState<string[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineOptionsLoading, setTimelineOptionsLoading] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -121,6 +157,37 @@ export default function App() {
 
     void loadFilterOptions();
   }, []);
+
+  useEffect(() => {
+    async function loadTimelineOptions() {
+      setTimelineOptionsLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (selectedBooks.length > 0) {
+          params.set("books", selectedBooks.join(","));
+        }
+        params.set("limit", "400");
+
+        const response = await fetch(`${API_BASE_URL}/api/timeline/options?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error("Failed to load timeline options");
+        }
+
+        const data = (await response.json()) as TimelineOptionsResponse;
+        setTimelineCharacterOptions(data.characters ?? []);
+        setTimelineDateOptions(data.dates ?? []);
+        setTimelineLocationOptions(data.locations ?? []);
+      } catch {
+        setTimelineCharacterOptions([]);
+        setTimelineDateOptions([]);
+        setTimelineLocationOptions([]);
+      } finally {
+        setTimelineOptionsLoading(false);
+      }
+    }
+
+    void loadTimelineOptions();
+  }, [selectedBooks]);
 
   function onBookSelectChange(event: SelectChangeEvent<string[]>) {
     const value = event.target.value;
@@ -180,6 +247,39 @@ export default function App() {
     }
   }
 
+  async function onTimelineSearch() {
+    setTimelineLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      if (timelineCharacter.trim()) {
+        params.set("character", timelineCharacter.trim());
+      }
+      if (timelineDate.trim()) {
+        params.set("date", timelineDate.trim());
+      }
+      if (timelineLocation.trim()) {
+        params.set("location", timelineLocation.trim());
+      }
+      if (selectedBooks.length > 0) {
+        params.set("books", selectedBooks.join(","));
+      }
+      params.set("limit", "200");
+
+      const response = await fetch(`${API_BASE_URL}/api/timeline/search?${params.toString()}`);
+      if (!response.ok) {
+        const body = (await response.json()) as { detail?: string };
+        throw new Error(body.detail ?? "Timeline search failed.");
+      }
+      const data = (await response.json()) as TimelineSearchResponse;
+      setTimelineResults(data.results ?? []);
+    } catch (searchError) {
+      setError(searchError instanceof Error ? searchError.message : "Timeline search failed.");
+    } finally {
+      setTimelineLoading(false);
+    }
+  }
+
   return (
     <Box
       sx={{
@@ -196,8 +296,19 @@ export default function App() {
             <Typography variant="h4" component="h1" fontWeight={700}>
               RAG Book AI
             </Typography>
-
-            <Box component="form" onSubmit={onSubmit}>
+            <Stack direction="row" spacing={1}>
+              <Button variant={page === "qa" ? "contained" : "outlined"} onClick={() => setPage("qa")}>
+                Ask
+              </Button>
+              <Button
+                variant={page === "timeline" ? "contained" : "outlined"}
+                onClick={() => setPage("timeline")}
+              >
+                Timeline
+              </Button>
+            </Stack>
+            {page === "qa" ? (
+              <Box component="form" onSubmit={onSubmit}>
               <Stack spacing={2}>
                 <TextField
                   label="Question"
@@ -279,10 +390,89 @@ export default function App() {
                 </Button>
               </Stack>
             </Box>
+            ) : (
+              <Stack spacing={2}>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                  <Autocomplete
+                    freeSolo
+                    fullWidth
+                    options={timelineCharacterOptions}
+                    loading={timelineOptionsLoading}
+                    inputValue={timelineCharacter}
+                    onInputChange={(_, value) => setTimelineCharacter(value)}
+                    renderInput={(params) => <TextField {...params} label="Character" />}
+                  />
+                  <Autocomplete
+                    freeSolo
+                    fullWidth
+                    options={timelineDateOptions}
+                    loading={timelineOptionsLoading}
+                    inputValue={timelineDate}
+                    onInputChange={(_, value) => setTimelineDate(value)}
+                    renderInput={(params) => <TextField {...params} label="Date contains" />}
+                  />
+                  <Autocomplete
+                    freeSolo
+                    fullWidth
+                    options={timelineLocationOptions}
+                    loading={timelineOptionsLoading}
+                    inputValue={timelineLocation}
+                    onInputChange={(_, value) => setTimelineLocation(value)}
+                    renderInput={(params) => <TextField {...params} label="Location" />}
+                  />
+                </Stack>
+                <Button variant="contained" onClick={onTimelineSearch} disabled={timelineLoading}>
+                  {timelineLoading ? "Searching..." : "Search Timeline"}
+                </Button>
+
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Timeline Results
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {timelineResults.length} rows
+                  </Typography>
+
+                  {timelineResults.map((row, idx) => (
+                    <Accordion key={`${row.chapter_ref}-${idx}`} disableGutters>
+                      <AccordionSummary>
+                        <Typography variant="body2">
+                          {row.book} | Ch {row.chapter ?? row.chapter_file} | POV {row.pov ?? "Unknown"} |{" "}
+                          {row.date_raw ?? "No date"}
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Stack spacing={1}>
+                          <Typography variant="caption">{row.chapter_ref}</Typography>
+                          <Typography variant="subtitle2">Key Events</Typography>
+                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            {row.key_events.map((event, eventIdx) => (
+                              <Chip key={eventIdx} size="small" label={event} />
+                            ))}
+                          </Stack>
+                          <Typography variant="subtitle2">Locations</Typography>
+                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            {row.locations.map((loc, locIdx) => (
+                              <Chip key={locIdx} size="small" variant="outlined" label={loc} />
+                            ))}
+                          </Stack>
+                          <Typography variant="subtitle2">Characters Present</Typography>
+                          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                            {row.characters_present.map((name, nameIdx) => (
+                              <Chip key={nameIdx} size="small" variant="outlined" color="secondary" label={name} />
+                            ))}
+                          </Stack>
+                        </Stack>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))}
+                </Paper>
+              </Stack>
+            )}
 
             {error ? <Alert severity="error">{error}</Alert> : null}
 
-            {answer ? (
+            {page === "qa" && answer ? (
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   Answer
@@ -293,7 +483,7 @@ export default function App() {
               </Paper>
             ) : null}
 
-            {stage1Chapters.length > 0 ? (
+            {page === "qa" && stage1Chapters.length > 0 ? (
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   Stage 1 Selected Chapters
@@ -315,7 +505,7 @@ export default function App() {
               </Paper>
             ) : null}
 
-            {sources.length > 0 ? (
+            {page === "qa" && sources.length > 0 ? (
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   Sources
