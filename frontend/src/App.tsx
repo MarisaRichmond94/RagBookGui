@@ -1,4 +1,19 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import Paper from "@mui/material/Paper";
+import Select, { SelectChangeEvent } from "@mui/material/Select";
+import Stack from "@mui/material/Stack";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 
 type SourceItem = {
   rank: number;
@@ -86,9 +101,9 @@ export default function App() {
     void loadFilterOptions();
   }, []);
 
-  function onBookSelectChange(event: ChangeEvent<HTMLSelectElement>) {
-    const options = Array.from(event.target.selectedOptions).map((option) => option.value);
-    setSelectedBooks(options);
+  function onBookSelectChange(event: SelectChangeEvent<string[]>) {
+    const value = event.target.value;
+    setSelectedBooks(typeof value === "string" ? value.split(",") : value);
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -137,122 +152,153 @@ export default function App() {
   }
 
   return (
-    <main className="container">
-      <h1>RAG Books QA</h1>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        py: { xs: 3, md: 5 },
+        px: 2,
+        background:
+          "radial-gradient(circle at 20% 0%, rgba(76, 201, 240, 0.22), transparent 42%), radial-gradient(circle at 80% 20%, rgba(247, 37, 133, 0.2), transparent 36%), #080b16"
+      }}
+    >
+      <Box sx={{ maxWidth: 980, mx: "auto" }}>
+        <Paper elevation={8} sx={{ p: { xs: 2, md: 3 } }}>
+          <Stack spacing={2.5}>
+            <Typography variant="h4" component="h1" fontWeight={700}>
+              RAG Book AI
+            </Typography>
 
-      <form className="ask-form" onSubmit={onSubmit}>
-        <label htmlFor="question">Question</label>
-        <textarea
-          id="question"
-          rows={5}
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask a question about your ragbooks collection..."
-        />
+            <Box component="form" onSubmit={onSubmit}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Question"
+                  multiline
+                  minRows={4}
+                  value={question}
+                  onChange={(event) => setQuestion(event.target.value)}
+                  placeholder="Ask a question about your ragbooks collection..."
+                />
 
-        <div className="filters-grid">
-          <div>
-            <label htmlFor="books">Books (multi-select)</label>
-            <select
-              id="books"
-              multiple
-              value={selectedBooks}
-              onChange={onBookSelectChange}
-              className="filter-select"
-            >
-              {allowedBooks.map((book) => (
-                <option key={book} value={book}>
-                  {book}
-                </option>
-              ))}
-            </select>
-          </div>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                  <FormControl fullWidth>
+                    <InputLabel id="books-select-label">Books (multi-select)</InputLabel>
+                    <Select<string[]>
+                      labelId="books-select-label"
+                      multiple
+                      value={selectedBooks}
+                      onChange={onBookSelectChange}
+                      input={<OutlinedInput label="Books (multi-select)" />}
+                      renderValue={(selected) => (
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                          {selected.map((book) => (
+                            <Chip key={book} label={book} size="small" />
+                          ))}
+                        </Stack>
+                      )}
+                    >
+                      {allowedBooks.length === 0 ? (
+                        <MenuItem disabled>No books configured</MenuItem>
+                      ) : (
+                        allowedBooks.map((book) => (
+                          <MenuItem key={book} value={book}>
+                            {book}
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
 
-          <div>
-            <label htmlFor="pov">POV</label>
-            <select
-              id="pov"
-              value={selectedPov}
-              onChange={(event) => setSelectedPov(event.target.value)}
-              className="filter-select"
-            >
-              <option value="">All</option>
-              {allowedPovs.map((pov) => (
-                <option key={pov} value={pov}>
-                  {pov}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+                  <FormControl fullWidth>
+                    <InputLabel id="pov-select-label">POV</InputLabel>
+                    <Select
+                      labelId="pov-select-label"
+                      value={selectedPov}
+                      label="POV"
+                      onChange={(event) => setSelectedPov(event.target.value)}
+                    >
+                      <MenuItem value="">All</MenuItem>
+                      {allowedPovs.map((pov) => (
+                        <MenuItem key={pov} value={pov}>
+                          {pov}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Stack>
 
-        <button type="submit" disabled={isLoading}>
-          {isLoading ? "Asking..." : "Ask"}
-        </button>
-      </form>
+                <Button type="submit" variant="contained" size="large" disabled={isLoading}>
+                  {isLoading ? "Asking..." : "Ask"}
+                </Button>
+              </Stack>
+            </Box>
 
-      {error ? <p className="error">{error}</p> : null}
+            {error ? <Alert severity="error">{error}</Alert> : null}
 
-      {answer ? (
-        <section className="panel">
-          <h2>Answer</h2>
-          <p>{answer}</p>
-        </section>
-      ) : null}
+            {answer ? (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Answer
+                </Typography>
+                <Typography variant="body1" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.65 }}>
+                  {answer}
+                </Typography>
+              </Paper>
+            ) : null}
 
-      {sources.length > 0 ? (
-        <section className="panel">
-          <h2>Sources</h2>
-          <div className="source-tabs" role="tablist" aria-label="Source list">
-            {sources.map((item, idx) => (
-              <button
-                key={`${item.rank}-${idx}`}
-                type="button"
-                className={`source-tab ${selectedSourceIndex === idx ? "active" : ""}`}
-                onClick={() => setSelectedSourceIndex(idx)}
-              >
-                {sourceLabel(item)}
-              </button>
-            ))}
-          </div>
+            {sources.length > 0 ? (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Sources
+                </Typography>
 
-          {selectedSource ? (
-            <div className="source-detail">
-              <p className="source-meta-line">
-                <strong>Selected:</strong> {sourceLabel(selectedSource)}
-                {selectedSource.distance !== null ? (
-                  <span className="distance">
-                    distance: {selectedSource.distance.toFixed(4)}
-                  </span>
+                <Tabs
+                  value={selectedSourceIndex}
+                  onChange={(_, value: number) => setSelectedSourceIndex(value)}
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+                >
+                  {sources.map((item, idx) => (
+                    <Tab key={`${item.rank}-${idx}`} label={sourceLabel(item)} />
+                  ))}
+                </Tabs>
+
+                {selectedSource ? (
+                  <Stack spacing={1.5}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      {selectedSource.distance !== null
+                        ? ` (distance: ${selectedSource.distance.toFixed(4)})`
+                        : ""}
+                    </Typography>
+
+                    <Paper variant="outlined" sx={{ p: 1.5 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Metadata
+                      </Typography>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={3}>
+                        <Typography variant="body2">
+                          <strong>Date:</strong>{" "}
+                          {metadataValue(metadataField(selectedSource.metadata, "date") ?? "N/A")}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>POV:</strong>{" "}
+                          {metadataValue(metadataField(selectedSource.metadata, "pov") ?? "N/A")}
+                        </Typography>
+                      </Stack>
+                    </Paper>
+
+                    <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 200, overflowY: "auto" }}>
+                      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                        {selectedSource.text}
+                      </Typography>
+                    </Paper>
+                  </Stack>
                 ) : null}
-              </p>
-
-              <div className="metadata-block">
-                <h3>Metadata</h3>
-                <dl className="metadata-list">
-                  <div className="metadata-item">
-                    <dt>date</dt>
-                    <dd>
-                      {metadataValue(metadataField(selectedSource.metadata, "date") ?? "N/A")}
-                    </dd>
-                  </div>
-                  <div className="metadata-item">
-                    <dt>pov</dt>
-                    <dd>
-                      {metadataValue(metadataField(selectedSource.metadata, "pov") ?? "N/A")}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-
-              <div className="text-block">
-                <h3>Sourced Text</h3>
-                <p>{selectedSource.text}</p>
-              </div>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-    </main>
+              </Paper>
+            ) : null}
+          </Stack>
+        </Paper>
+      </Box>
+    </Box>
   );
 }
